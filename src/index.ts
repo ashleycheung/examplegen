@@ -100,9 +100,9 @@ function generateMarkdown(filePath: string, outDir: string): GeneratedFile[] {
           // Get all children cases
           const fileName = description.slice(options['describePrefix'].length) + '.md';
           const examples = getChildExamples(node, sourceFile);
-          const outContent = examples
-            .map((example) => example.description + '\n' + example.markdown)
-            .join('\n');
+          const outContent =
+            `# ${fileName.slice(0, -1 * '.md'.length)}\n` +
+            examples.map((example) => example.description + '\n' + example.markdown).join('\n');
           if (!fs.existsSync(outDir)) {
             fs.mkdirSync(outDir, { recursive: true });
           }
