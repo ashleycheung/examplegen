@@ -1,6 +1,6 @@
 {
   "name": "examplegen",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "main": "bin/index.js",
   "license": "MIT",
   "bin": "./bin/index.js",
