@@ -5,7 +5,8 @@
   "license": "MIT",
   "bin": "./bin/index.js",
   "scripts": {
-    "dev": "ts-node src/index.ts"
+    "dev": "ts-node src/index.ts --in ./dump",
+    "build": "tsc"
   },
   "dependencies": {
     "command-line-args": "^5.2.1",

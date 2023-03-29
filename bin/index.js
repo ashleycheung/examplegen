@@ -9,12 +9,14 @@ var typescript_1 = __importDefault(require("typescript"));
 var command_line_args_1 = __importDefault(require("command-line-args"));
 var path_1 = __importDefault(require("path"));
 var cliOptions = [
+    { name: 'title', type: String, defaultValue: 'Documentation' },
     { name: 'in', type: String, defaultValue: './' },
     { name: 'out', type: String, defaultValue: './' },
     { name: 'ignore', type: String, defaultValue: undefined },
     { name: 'outDirName', type: String, defaultValue: 'examples' },
     { name: 'include', type: String, defaultValue: /\.test\.ts/ },
     { name: 'describePrefix', type: String, defaultValue: 'example:' },
+    { name: 'includeIndexPage', type: Boolean, defaultValue: true },
 ];
 var options = (0, command_line_args_1.default)(cliOptions);
 function getDescription(node, sourceFile) {
@@ -38,8 +40,12 @@ function getChildExamples(node, sourceFile) {
             description = description.slice(options['describePrefix'].length);
             // Get inner text and clean it
             var innerText = (_a = node.arguments[1]) === null || _a === void 0 ? void 0 : _a.getText(sourceFile);
-            if (innerText === null || innerText === void 0 ? void 0 : innerText.startsWith('() => {')) {
-                innerText = innerText.slice('() => {'.length);
+            if (innerText === null || innerText === void 0 ? void 0 : innerText.startsWith('() => {\n')) {
+                innerText = innerText.slice('() => {\n'.length);
+            }
+            // Occurs during async function
+            if (innerText === null || innerText === void 0 ? void 0 : innerText.startsWith('async () => {\n')) {
+                innerText = innerText.slice('async () => {\n'.length);
             }
             if (innerText === null || innerText === void 0 ? void 0 : innerText.endsWith('}')) {
                 innerText = innerText.slice(0, innerText.length - '}'.length);
@@ -52,7 +58,7 @@ function getChildExamples(node, sourceFile) {
                     .join('\n');
             }
             // Create markdown
-            var markdown = '```ts\n' + innerText + '\n```';
+            var markdown = '```ts\n' + innerText + '```';
             examples.push({
                 description: description,
                 markdown: markdown,
@@ -64,6 +70,7 @@ function getChildExamples(node, sourceFile) {
 }
 // Generate markdown example given a test file path
 function generateMarkdown(filePath, outDir) {
+    var generatedFiles = [];
     var content = fs_1.default.readFileSync(filePath, 'utf8');
     // Create AST
     var sourceFile = typescript_1.default.createSourceFile(filePath, content, typescript_1.default.ScriptTarget.Latest);
@@ -74,8 +81,8 @@ function generateMarkdown(filePath, outDir) {
                 var description = getDescription(node, sourceFile);
                 if (description !== undefined && description.startsWith(options['describePrefix'])) {
                     // Get all children cases
-                    var examples = getChildExamples(node, sourceFile);
                     var fileName = description.slice(options['describePrefix'].length) + '.md';
+                    var examples = getChildExamples(node, sourceFile);
                     var outContent = examples
                         .map(function (example) { return example.description + '\n' + example.markdown; })
                         .join('\n');
@@ -83,15 +90,23 @@ function generateMarkdown(filePath, outDir) {
                         fs_1.default.mkdirSync(outDir, { recursive: true });
                     }
                     console.log("Generated file ".concat(fileName));
-                    fs_1.default.writeFileSync(path_1.default.join(outDir, fileName), outContent);
+                    var filePath_1 = path_1.default.join(outDir, fileName);
+                    fs_1.default.writeFileSync(filePath_1, outContent);
+                    generatedFiles.push({
+                        fileName: fileName,
+                        path: filePath_1,
+                    });
                 }
             }
         }
         node.forEachChild(traverse);
     };
     traverse(sourceFile);
+    return generatedFiles;
 }
+// Recursively searches a folder
 function recursiveSearch(inDir, outDir, include, ignore) {
+    var generatedFiles = [];
     fs_1.default.readdirSync(inDir).forEach(function (fileName) {
         var filePath = path_1.default.join(inDir, fileName);
         // Matches ignore so exclude
@@ -99,11 +114,29 @@ function recursiveSearch(inDir, outDir, include, ignore) {
             return;
         }
         if (fs_1.default.lstatSync(filePath).isDirectory()) {
-            recursiveSearch(filePath, path_1.default.join(outDir, fileName), include, ignore);
+            generatedFiles.push.apply(generatedFiles, recursiveSearch(filePath, path_1.default.join(outDir, fileName), include, ignore));
         }
         else if (new RegExp(include).test(filePath)) {
-            generateMarkdown(filePath, outDir);
+            generatedFiles.push.apply(generatedFiles, generateMarkdown(filePath, outDir));
         }
     });
+    return generatedFiles;
 }
-recursiveSearch(options['in'], path_1.default.join(options['out'], options['outDirName']), options['include'], options['ignore']);
+function main() {
+    var outDirPath = path_1.default.join(options['out'], options['outDirName']);
+    var generatedFiles = recursiveSearch(options['in'], outDirPath, options['include'], options['ignore']);
+    if (options['includeIndexPage']) {
+        var filePath = path_1.default.join(outDirPath, 'index.md');
+        var outContent = '# ' +
+            options['title'] +
+            '\n' +
+            generatedFiles
+                .map(function (file) {
+                return "- [".concat(file.fileName.slice(0, -1 * '.md'.length), "](").concat(file.path.replace(outDirPath, '.'), ")");
+            })
+                .join('\n');
+        fs_1.default.writeFileSync(filePath, outContent);
+        console.log('Generated index file');
+    }
+}
+main();

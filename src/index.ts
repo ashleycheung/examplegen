@@ -5,12 +5,14 @@ import commandLineArgs, { OptionDefinition } from 'command-line-args';
 import path from 'path';
 
 const cliOptions: OptionDefinition[] = [
+  { name: 'title', type: String, defaultValue: 'Documentation' },
   { name: 'in', type: String, defaultValue: './' },
   { name: 'out', type: String, defaultValue: './' },
   { name: 'ignore', type: String, defaultValue: undefined },
   { name: 'outDirName', type: String, defaultValue: 'examples' },
   { name: 'include', type: String, defaultValue: /\.test\.ts/ },
   { name: 'describePrefix', type: String, defaultValue: 'example:' },
+  { name: 'includeIndexPage', type: Boolean, defaultValue: true },
 ];
 
 const options = commandLineArgs(cliOptions);
@@ -41,8 +43,12 @@ function getChildExamples(node: ts.Node, sourceFile: ts.SourceFile): Example[] {
 
       // Get inner text and clean it
       let innerText = node.arguments[1]?.getText(sourceFile);
-      if (innerText?.startsWith('() => {')) {
-        innerText = innerText.slice('() => {'.length);
+      if (innerText?.startsWith('() => {\n')) {
+        innerText = innerText.slice('() => {\n'.length);
+      }
+      // Occurs during async function
+      if (innerText?.startsWith('async () => {\n')) {
+        innerText = innerText.slice('async () => {\n'.length);
       }
       if (innerText?.endsWith('}')) {
         innerText = innerText.slice(0, innerText.length - '}'.length);
@@ -63,7 +69,7 @@ function getChildExamples(node: ts.Node, sourceFile: ts.SourceFile): Example[] {
       }
 
       // Create markdown
-      const markdown = '```ts\n' + innerText + '\n```';
+      const markdown = '```ts\n' + innerText + '```';
       examples.push({
         description: description,
         markdown: markdown,
@@ -74,8 +80,14 @@ function getChildExamples(node: ts.Node, sourceFile: ts.SourceFile): Example[] {
   return examples;
 }
 
+interface GeneratedFile {
+  fileName: string;
+  path: string;
+}
+
 // Generate markdown example given a test file path
-function generateMarkdown(filePath: string, outDir: string) {
+function generateMarkdown(filePath: string, outDir: string): GeneratedFile[] {
+  const generatedFiles: GeneratedFile[] = [];
   const content = fs.readFileSync(filePath, 'utf8');
   // Create AST
   const sourceFile = ts.createSourceFile(filePath, content, ts.ScriptTarget.Latest);
@@ -86,8 +98,8 @@ function generateMarkdown(filePath: string, outDir: string) {
         const description = getDescription(node, sourceFile);
         if (description !== undefined && description.startsWith(options['describePrefix'])) {
           // Get all children cases
-          const examples = getChildExamples(node, sourceFile);
           const fileName = description.slice(options['describePrefix'].length) + '.md';
+          const examples = getChildExamples(node, sourceFile);
           const outContent = examples
             .map((example) => example.description + '\n' + example.markdown)
             .join('\n');
@@ -95,21 +107,29 @@ function generateMarkdown(filePath: string, outDir: string) {
             fs.mkdirSync(outDir, { recursive: true });
           }
           console.log(`Generated file ${fileName}`);
-          fs.writeFileSync(path.join(outDir, fileName), outContent);
+          const filePath = path.join(outDir, fileName);
+          fs.writeFileSync(filePath, outContent);
+          generatedFiles.push({
+            fileName: fileName,
+            path: filePath,
+          });
         }
       }
     }
     node.forEachChild(traverse);
   };
   traverse(sourceFile);
+  return generatedFiles;
 }
 
+// Recursively searches a folder
 function recursiveSearch(
   inDir: string,
   outDir: string,
   include: string,
   ignore: string | undefined
-) {
+): GeneratedFile[] {
+  const generatedFiles: GeneratedFile[] = [];
   fs.readdirSync(inDir).forEach((fileName) => {
     const filePath = path.join(inDir, fileName);
     // Matches ignore so exclude
@@ -117,15 +137,41 @@ function recursiveSearch(
       return;
     }
     if (fs.lstatSync(filePath).isDirectory()) {
-      recursiveSearch(filePath, path.join(outDir, fileName), include, ignore);
+      generatedFiles.push(
+        ...recursiveSearch(filePath, path.join(outDir, fileName), include, ignore)
+      );
     } else if (new RegExp(include).test(filePath)) {
-      generateMarkdown(filePath, outDir);
+      generatedFiles.push(...generateMarkdown(filePath, outDir));
     }
   });
+  return generatedFiles;
 }
-recursiveSearch(
-  options['in'],
-  path.join(options['out'], options['outDirName']),
-  options['include'],
-  options['ignore']
-);
+
+function main() {
+  const outDirPath = path.join(options['out'], options['outDirName']);
+  const generatedFiles = recursiveSearch(
+    options['in'],
+    outDirPath,
+    options['include'],
+    options['ignore']
+  );
+  if (options['includeIndexPage']) {
+    const filePath = path.join(outDirPath, 'index.md');
+    const outContent =
+      '# ' +
+      options['title'] +
+      '\n' +
+      generatedFiles
+        .map(
+          (file) =>
+            `- [${file.fileName.slice(0, -1 * '.md'.length)}](${file.path.replace(
+              outDirPath,
+              '.'
+            )})`
+        )
+        .join('\n');
+    fs.writeFileSync(filePath, outContent);
+    console.log('Generated index file');
+  }
+}
+main();

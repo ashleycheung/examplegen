@@ -40,11 +40,13 @@ console.log('hello world!');
 
 ## Configuration
 
-| **Option**     | **Description**                                        |
-| -------------- | ------------------------------------------------------ |
-| in             | The starting directory to search files in              |
-| out            | The out directory to place the generated files         |
-| ignore         | A regex expression of files to ignore                  |
-| outDirName     | The generated directory name                           |
-| include        | A regex expression of files to include                 |
-| describePrefix | The prefix in the the describe description to look for |
+| **Option**       | Default Value | **Description**                                         |
+| ---------------- | ------------- | ------------------------------------------------------- |
+| title            | Documentation | The title to display in the index page                  |
+| in               | ./            | The starting directory to search files in               |
+| out              | ./            | The out directory to place the generated files          |
+| ignore           | undefined     | A regex expression of files to ignore                   |
+| outDirName       | examples      | The generated directory name                            |
+| include          | /\.test\.ts/  | A regex expression of files to include                  |
+| describePrefix   | example:      | The prefix in the the describe description to look for  |
+| includeIndexPage | true          | Generates an additional markdown page indexing all docs |
